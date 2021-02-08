@@ -14,18 +14,18 @@ CONFIG ?= t85_default
 #     make CONFIG=<config>  # build a specific configuration
 #     make                  # build standard configuration
 #     make release          # will cycle through all configurations in the configuration folder and build them
-#	  make clean			# cleans up last build files
+#     make clean            # cleans up last build files
 #     make dist-clean       # removes all hex files
 #
 # Configure the following variables according to your AVR.
-# Program the device with#
-#     make fuse    			# to set the clock generator, boot section size etc.
-#     make flash   			# to load the boot loader into flash
-#     make disablereset		# use external reset line for IO (CAUTION: this is not easy to enable again, see README) 
+# Program the device with
+#     make fuse                 # to set the clock generator, boot section size etc.
+#     make flash                # to load the boot loader into flash
+#     make disablereset         # use external reset line for IO (CAUTION: this is not easy to enable again, see README) 
 ###############################################################################
 
 CFLAGS =
-CONFIGPATH	  = configuration/$(CONFIG)
+CONFIGPATH = configuration/$(CONFIG)
 include $(CONFIGPATH)/Makefile.inc
 
 PROGRAMMER ?= -c USBasp
@@ -36,7 +36,7 @@ AVRDUDE = avrdude $(PROGRAMMER) -p $(DEVICE)
 CC = avr-gcc
 
 # Options:
-CFLAGS += -I. -g2 -Os # -Wall -Wextra
+CFLAGS += -I. -g2 -Os -Wall -Wextra
 CFLAGS += -I$(CONFIGPATH) -mmcu=$(DEVICE) -DF_CPU=$(F_CPU) -DBOOTLOADER_ADDRESS=0x$(BOOTLOADER_ADDRESS) 
 CFLAGS += -nostartfiles -ffunction-sections -fdata-sections -fpack-struct -fno-inline-small-functions -fno-move-loop-invariants -fno-tree-scev-cprop
 
@@ -85,22 +85,25 @@ dist-clean:
 	@rm -f upgrades/* releases/*
 
 # file targets:
-main.bin:	$(OBJECTS)
+main.bin: $(OBJECTS)
 	@$(CC) $(CFLAGS) -o main.bin $(OBJECTS) $(LDFLAGS)
 	@avr-objdump -d -S main.bin > main.lss
 
-main.hex:	main.bin
+main.hex: main.bin
 	@echo Building Micronucleus configuration: $(CONFIG)
 	@rm -f main.hex main.eep.hex
 	@avr-objcopy -j .text -j .data -O ihex main.bin main.hex
 # 	@echo Size of binary hexfile. Use the "data" size to calculate the bootloader address:
 #	@avr-size main.hex
-#   if you don't have python installed, you can comment out the next three lines and use the two above
-	@avr-size -A -t main.hex >size.txt
-	@python CalculateSize.py <size.txt
-	@rm size.txt
+#   if you don't have python installed, you can comment out the next lines and use the two above
+	@echo Building Micronucleus configuration: $(CONFIG) >> build.log
+	@avr-size -A -t main.hex > size.txt
+	@python CalculateSize.py < size.txt > size.out
+	@cat size.out >> build.log
+	@echo - >> build.log
+	@cat size.out
 
-disasm:	main.bin upgrade.bin
+disasm: main.bin upgrade.bin
 	@avr-objdump -d -S main.bin >main.lss
 	@avr-nm -l -S -n main.bin > main.lst
 	@avr-objdump -d -S upgrade.bin > upgrade.lss
@@ -119,7 +122,7 @@ upgrade.bin:	upgrade.o bootloader.o
 	@$(CC) $(CFLAGS_U) -o upgrade.bin upgrade.o bootloader.o $(LDFLAGS_U)
 	@avr-objdump -d -S upgrade.bin > upgrade.lss
 
-upgrade.hex:	upgrade.bin
+upgrade.hex: upgrade.bin
 	@rm -f upgrade.hex upgrade.eep.hex
 	@avr-objcopy -j .text -j .data -O ihex upgrade.bin upgrade-app.hex
 # for internal echo command, mainly on windows
@@ -131,7 +134,7 @@ else
 endif
 	@cat upgrade-app.hex >> upgrade.hex
 	@rm upgrade-app.hex
-#m	@avr-size upgrade.hex
+#	@avr-size upgrade.hex
 
 
 bootloader.raw: main.hex
