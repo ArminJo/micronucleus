@@ -11,6 +11,7 @@ on:
     paths:
     - '**/comandline/library/**'
     - '**/comandline/micronucleus.c'
+    - '**/comandline/builds/**/package.json'
     - '**BuildBinaries.yml'
 
 jobs:
@@ -44,6 +45,10 @@ jobs:
          - os: windows-2019
            shell: msys2 {0}
            target-dir: i686-mingw32
+
+         - os: windows-2019
+           shell: msys2 {0}
+           target-dir: x86_64-mingw32
 
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container }}
@@ -114,57 +119,92 @@ jobs:
         make USBFLAGS="$(pkg-config --cflags libusb)"
         ls -l
 
-    - name: Install Windows build system
-      if: runner.os == 'Windows'
+    - name: Install Windows i686 build system
+      if: runner.os == 'Windows' && matrix.target-dir == 'i686-mingw32'
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        #install: git base-devel binutils mingw-w64-x86_64-toolchain make zip mingw-w64-x86_64-libusb-win32
+        install: git base-devel mingw-w64-i686-toolchain zip mingw-w64-i686-libusb-win32
+        update: true
+
+    - name: make i686 Windows exe
+      if: runner.os == 'Windows' && matrix.target-dir == 'i686-mingw32'
+      run: |
+        TARGET_DIR=${{ matrix.target-dir }}
+        cd commandline
+        PATH="/mingw32/bin:$PATH"
+        mingw32-make
+        if [[ ! -d builds/$TARGET_DIR/ ]]; then mkdir builds/$TARGET_DIR; fi
+        echo mv micronucleus.exe builds/$TARGET_DIR
+        mv micronucleus.exe builds/$TARGET_DIR
+        echo cp -p /mingw32/bin/libusb*.dll builds/$TARGET_DIR
+        cp -p /mingw32/bin/libusb*.dll builds/$TARGET_DIR
+
+    - name: Install Windows x86_64 build system
+      if: runner.os == 'Windows' && matrix.target-dir == 'x86_64-mingw32'
       uses: msys2/setup-msys2@v2
       with:
         msystem: MINGW64
         install: git base-devel binutils mingw-w64-x86_64-toolchain make zip mingw-w64-x86_64-libusb-win32
         update: true
 
-    - name: make windows exe
-      if: runner.os == 'Windows'
-      id: make
+    - name: make x86_64 Windows exe
+      if: runner.os == 'Windows' && matrix.target-dir == 'x86_64-mingw32'
       run: |
+        TARGET_DIR=${{ matrix.target-dir }}
         cd commandline
         mingw32-make
-        TARGET_DIR=${{ matrix.target-dir }}
         if [[ ! -d builds/$TARGET_DIR/ ]]; then mkdir builds/$TARGET_DIR; fi
-        set -o verbose
-        #echo mv micronucleus.exe builds/$TARGET_DIR
+        echo mv micronucleus.exe builds/$TARGET_DIR
         mv micronucleus.exe builds/$TARGET_DIR
-        #echo cp -p /mingw64/bin/libusb*.dll builds/$TARGET_DIR
+        echo cp -p /mingw64/bin/libusb*.dll builds/$TARGET_DIR
         cp -p /mingw64/bin/libusb*.dll builds/$TARGET_DIR
 
-    - name: move exetutable to builds
+    - name: create tarballs and move them to builds directory
       if: runner.os != 'Windows'
       run: |
+        TARGET_DIR=${{ matrix.target-dir }}
         TARBALL_NAME=micronucleus-cli-2.5-$TARGET_DIR.tar.gz
         TARBALL_NAME_PIO=micronucleus-cli-2.5-pio-$TARGET_DIR.tar.gz
         set -o verbose
-        mkdir micronucleus
+        mkdir micronucleus # temporary tar directory
         chmod +x commandline/micronucleus
         mv commandline/micronucleus micronucleus
         tar -czvf $TARBALL_NAME micronucleus # create arduino tarball
-        cp commandline/builds/$TARGET_DIR/package-json .
+        cp commandline/builds/$TARGET_DIR/package.json micronucleus
         cd micronucleus
-        tar -czvf $TARBALL_NAME_PIO micronucleus package-json # create PIO tarball
+        tar -czvf $TARBALL_NAME_PIO micronucleus package.json # create PIO tarball
+        ls -l
+
         cd ../commandline
-        TARGET_DIR=${{ matrix.target-dir }}
+        set +o verbose
         if [[ ! -d builds/$TARGET_DIR/ ]]; then
-          # build new directory, and add tarball to git index
+          # build new directory
           mkdir builds/$TARGET_DIR
-          #echo mv ../micronucleus/* builds/$TARGET_DIR
-          mv ../micronucleus/* builds/$TARGET_DIR
-          #echo git -add builds/$TARGET_DIR/$TARBALL_NAME
+        fi
+
+        ls -l builds/$TARGET_DIR # show old content which we had checked out
+        # process Arduino tarball
+        if [[ ! -e builds/$TARGET_DIR/$TARBALL_NAME ]]; then
+          echo mv ../$TARBALL_NAME builds/$TARGET_DIR
+          mv ../$TARBALL_NAME builds/$TARGET_DIR
+          echo git -add builds/$TARGET_DIR/$TARBALL_NAME
           git add builds/$TARGET_DIR/$TARBALL_NAME
-          #echo git -add builds/$TARGET_DIR/$TARBALL_NAME_PIO
+        else
+          echo mv ../$TARBALL_NAME builds/$TARGET_DIR
+          mv ../$TARBALL_NAME builds/$TARGET_DIR
+        fi
+
+        # process PIO tarball
+        if [[ ! -e builds/$TARGET_DIR/$TARBALL_NAME_PIO ]]; then
+          echo mv ../micronucleus/$TARBALL_NAME_PIO builds/$TARGET_DIR
+          mv ../micronucleus/$TARBALL_NAME_PIO builds/$TARGET_DIR
+          echo git -add builds/$TARGET_DIR/$TARBALL_NAME_PIO
           git add builds/$TARGET_DIR/$TARBALL_NAME_PIO
         else
-          # show old content which we had checked out
-          ls -l builds/$TARGET_DIR
-          #echo mv ../micronucleus/* builds/$TARGET_DIR
-          mv ../micronucleus/$T* builds/$TARGET_DIR
+          echo mv ../micronucleus/$TARBALL_NAME_PIO builds/$TARGET_DIR
+          mv ../micronucleus/$TARBALL_NAME_PIO builds/$TARGET_DIR
         fi
         # show new content
         ls -l builds/$TARGET_DIR
